@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  PaintBucket,
-  ActivityIcon,
-  SettingsIcon,
-  Home,
-} from "lucide-react";
+import { PaintBucket, ActivityIcon, SettingsIcon, Home } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -19,7 +14,10 @@ import {
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { redirect, usePathname } from "next/navigation";
+import { Button } from "../ui/button";
+import { authClient } from "@/lib/auth-client";
+import { toast } from "sonner";
 
 const navigation = [
   { name: "Home", href: "/home", icon: Home },
@@ -31,6 +29,13 @@ const navigation = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    toast.success("Successfully signed out");
+    redirect("/");
+  };
+
   return (
     <Sidebar className="border-r border-border bg-sidebar">
       <SidebarContent className="p-4">
@@ -100,6 +105,12 @@ export function AppSidebar() {
             <Progress value={42} className="h-2 mb-1" />
             <p className="text-xs text-sidebar-foreground/60">42% used</p>
           </div>
+        </div>
+
+        <div className="">
+          <Button className="" variant="outline" onClick={handleSignOut}>
+            Sign Out
+          </Button>
         </div>
       </SidebarContent>
     </Sidebar>
