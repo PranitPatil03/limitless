@@ -22,8 +22,6 @@ import { toast } from "sonner";
 const navigation = [
   { name: "Home", href: "/home", icon: Home },
   { name: "Buckets", href: "/buckets", icon: PaintBucket },
-  // { name: "Files", href: "/buckets", icon: FilesIcon },
-  { name: "Activity", href: "/activity", icon: ActivityIcon },
   { name: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 

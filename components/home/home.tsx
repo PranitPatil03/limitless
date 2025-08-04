@@ -1,9 +1,9 @@
-"use client"
-
+"use client";
 import Link from "next/link";
 import React from "react";
 
 export default function HomePage() {
+
   return (
     <div className="py-8 px-2 md:px-6 w-full max-w-7xl mx-auto">
       <div className="mb-6">
@@ -50,6 +50,11 @@ export default function HomePage() {
           <div className="text-xs text-orange-600 mt-1 font-mono">
             +23% from last month
           </div>
+        </div>
+        <div>
+          {/* {getbuckets().then(buckets => buckets && buckets.map(bucket => (
+            <div key={bucket.name}>{bucket.name}</div>
+          )))} */}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@/lib/auth-client";
 import BucketDetail from "../../../../components/buckets/bucket-detail";
 
 interface Props {
@@ -9,5 +10,9 @@ interface Props {
 }
 
 export default function BucketPage({ params: { bucketId } }: Props) {
-  return <BucketDetail bucketId={bucketId} />;
+    const { data: session } = authClient.useSession();
+    const user = session?.user;
+    const userId = user?.id
+  
+  return <BucketDetail bucketId={bucketId} userId={userId ?? ""}/>;
 }

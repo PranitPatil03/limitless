@@ -1,56 +1,90 @@
 "use client";
 
+import "../../app/globals.css";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-
-const buckets = [
-  {
-    name: "my-production-bucket",
-    region: "us-east-1",
-    files: 1247,
-    size: "2.4 GB",
-    created: "2 months ago",
-    privacy: "Private",
-  },
-  {
-    name: "user-uploads",
-    region: "us-west-2",
-    files: 856,
-    size: "1.8 GB",
-    created: "3 months ago",
-    privacy: "Public",
-  },
-  {
-    name: "backups-archive",
-    region: "eu-west-1",
-    files: 423,
-    size: "5.2 GB",
-    created: "6 months ago",
-    privacy: "Private",
-  },
-  {
-    name: "static-assets",
-    region: "us-east-1",
-    files: 2341,
-    size: "856 MB",
-    created: "1 year ago",
-    privacy: "Public",
-  },
-];
-
-const privacyIcon = {
-  Public: "/globe.svg",
-  Private: "/window.svg",
-};
+import { authClient } from "@/lib/auth-client";
+import { getBucketDetails } from "@/lib/aws/get-bucket-detailes";
+import { fetchUserBuckets } from "@/lib/aws/get-user-buckets";
+import { LoadingSpinner } from "../ui/spinner";
 
 export default function AllBuckets() {
+  interface Bucket {
+    name: string;
+    region?: string;
+    files?: number;
+    size?: string | number;
+    created?: string;
+  }
+
+  const [buckets, setBuckets] = useState<Bucket[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const { data: session } = authClient.useSession();
+  const user = session?.user;
+  const userId = user?.id;
+
+  function formatSize(bytes: number) {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  const fetchBuckets = async () => {
+    if (!userId) return;
+    setLoading(true);
+
+    try {
+      const userBuckets = await fetchUserBuckets(userId);
+
+      const detailedBuckets = await Promise.all(
+        userBuckets.map(async (bucket: { name: string; privacy: "Public" | "Private" }) => {
+          try {
+            const detail = await getBucketDetails(userId, bucket.name);
+            return {
+              name: bucket.name,
+              region: detail.region,
+              privacy: bucket.privacy,
+              files: detail.totalFiles,
+              size: formatSize(detail.totalSizeBytes),
+              created: new Date(detail.creationDate).toLocaleDateString(),
+            };
+          } catch (err) {
+            console.warn(`Failed to get details for ${bucket.name}`, err);
+            return {
+              name: bucket.name,
+              privacy: bucket.privacy,
+              region: "-",
+              files: "-",
+              size: "-",
+              created: "-",
+            };
+          }
+        })
+      );
+
+      setBuckets(detailedBuckets);
+    } catch (error) {
+      console.error("Failed to fetch buckets:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userId) {
+      setLoading(true);
+      fetchBuckets();
+    }
+  }, [userId]);
+
   const filteredBuckets = buckets.filter((b) =>
-    b.name.toLowerCase().includes(search.toLowerCase())
+    b.name?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -77,6 +111,11 @@ export default function AllBuckets() {
           </Button>
         </div>
       </div>
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <LoadingSpinner className="h-6 w-6" />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
         {filteredBuckets.map((bucket) => (
           <Link href={`/buckets/${bucket.name}`} key={bucket.name} className="transition-shadow">
@@ -92,35 +131,19 @@ export default function AllBuckets() {
                   </div>
                 </span>
               </div>
-              <div className="flex flex-col gap-3 justify-between items-start">
-                <Badge
-                  variant={bucket.privacy === "Public" ? "default" : "outline"}
-                  className="ml-2 flex items-center gap-1 px-2 py-0.5 text-xs"
-                >
-                  <Image
-                    src={
-                      privacyIcon[bucket.privacy as keyof typeof privacyIcon]
-                    }
-                    alt={bucket.privacy}
-                    width={8}
-                    height={8}
-                  />
-                  {bucket.privacy}
-                </Badge>
-              </div>
 
               <div className="flex flex-col gap-1 text-sm">
                 <div>
                   <span className="text-muted-foreground">Files</span>:{" "}
-                  <span className="font-semibold">{bucket.files}</span>
+                  <span className="font-semibold">{bucket.files ?? "-"}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Size</span>:{" "}
-                  <span className="font-semibold">{bucket.size}</span>
+                  <span className="font-semibold">{bucket.size ?? "-"}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Created</span>:{" "}
-                  <span className="font-semibold">{bucket.created}</span>
+                  <span className="font-semibold">{bucket.created ?? "-"}</span>
                 </div>
               </div>
             </Card>

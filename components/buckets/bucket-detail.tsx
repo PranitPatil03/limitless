@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Folder,
   FileText,
@@ -21,9 +21,7 @@ import {
   Video,
   Archive,
   Download,
-  Trash2,
   Upload,
-  Plus,
   Search,
   ArrowLeft,
   MoreHorizontal,
@@ -33,16 +31,19 @@ import {
   SortDesc,
   Filter,
   Eye,
-  Copy,
-  Share,
-  Star,
   Calendar,
   FileType,
   HardDrive,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  HomeIcon,
 } from "lucide-react";
+import { LoadingSpinner } from "../ui/spinner";
 
 interface BucketDetailProps {
   bucketId: string;
+  userId: string;
 }
 
 interface S3Item {
@@ -54,71 +55,20 @@ interface S3Item {
   icon: React.ComponentType<{ className?: string }>;
   isSelected?: boolean;
   fileType?: string;
+  sizeBytes?: number;
 }
 
-const mockS3Data: S3Item[] = [
-  { key: "documents/", name: "Documents", type: "folder", icon: Folder },
-  { key: "images/", name: "Images", type: "folder", icon: Folder },
-  { key: "videos/", name: "Videos", type: "folder", icon: Folder },
-  { key: "archives/", name: "Archives", type: "folder", icon: Folder },
-  { key: "projects/", name: "Projects", type: "folder", icon: Folder },
-  { key: "backups/", name: "Backups", type: "folder", icon: Folder },
-
-  {
-    key: "project-proposal.pdf",
-    name: "project-proposal.pdf",
-    type: "file",
-    size: "2.4 MB",
-    lastModified: "2 hours ago",
-    icon: FileText,
-    fileType: "pdf",
-  },
-  {
-    key: "banner-image.jpg",
-    name: "banner-image.jpg",
-    type: "file",
-    size: "1.8 MB",
-    lastModified: "1 day ago",
-    icon: ImageIcon,
-    fileType: "image",
-  },
-  {
-    key: "presentation.pptx",
-    name: "presentation.pptx",
-    type: "file",
-    size: "5.2 MB",
-    lastModified: "3 days ago",
-    icon: FileText,
-    fileType: "document",
-  },
-  {
-    key: "demo-video.mp4",
-    name: "demo-video.mp4",
-    type: "file",
-    size: "45.3 MB",
-    lastModified: "1 week ago",
-    icon: Video,
-    fileType: "video",
-  },
-  {
-    key: "data-export.zip",
-    name: "data-export.zip",
-    type: "file",
-    size: "12.7 MB",
-    lastModified: "2 weeks ago",
-    icon: Archive,
-    fileType: "archive",
-  },
-  {
-    key: "readme.md",
-    name: "readme.md",
-    type: "file",
-    size: "2.1 KB",
-    lastModified: "1 month ago",
-    icon: FileText,
-    fileType: "text",
-  },
-];
+interface BucketContentsResponse {
+  folders: string[];
+  files: Array<{
+    key: string;
+    size: number;
+    lastModified: string;
+    storageClass: string;
+  }>;
+  isTruncated: boolean;
+  nextContinuationToken?: string;
+}
 
 type SortOption = "name" | "size" | "modified" | "type";
 type SortDirection = "asc" | "desc";
@@ -132,7 +82,82 @@ type FilterOption =
   | "archive"
   | "text";
 
-export default function BucketDetail({ bucketId }: BucketDetailProps) {
+// Helper function to get file icon based on extension
+const getFileIcon = (
+  fileName: string
+): React.ComponentType<{ className?: string }> => {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  switch (extension) {
+    case "jpg":
+    case "jpeg":
+    case "png":
+    case "gif":
+    case "bmp":
+    case "svg":
+    case "webp":
+      return ImageIcon;
+    case "mp4":
+    case "avi":
+    case "mov":
+    case "wmv":
+    case "flv":
+    case "webm":
+      return Video;
+    case "zip":
+    case "rar":
+    case "7z":
+    case "tar":
+    case "gz":
+      return Archive;
+    default:
+      return FileText;
+  }
+};
+
+// Helper function to get file type category
+const getFileType = (fileName: string): string => {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  if (
+    ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp"].includes(
+      extension || ""
+    )
+  )
+    return "image";
+  if (["mp4", "avi", "mov", "wmv", "flv", "webm"].includes(extension || ""))
+    return "video";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(extension || ""))
+    return "archive";
+  if (["pdf"].includes(extension || "")) return "pdf";
+  if (["txt", "md", "csv", "log"].includes(extension || "")) return "text";
+  return "document";
+};
+
+// Helper function to format file size
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
+// Helper function to format date
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - date.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 1) return "1 day ago";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.ceil(diffDays / 30)} months ago`;
+  return `${Math.ceil(diffDays / 365)} years ago`;
+};
+
+export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPath, setCurrentPath] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -140,9 +165,81 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
   const [sortBy, setSortBy] = useState<SortOption>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [filterBy, setFilterBy] = useState<FilterOption>("all");
+  const [items, setItems] = useState<S3Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextToken, setNextToken] = useState<string | undefined>();
 
-  const filteredItems = mockS3Data.filter((item) => {
-    const matchesPath = item.key.startsWith(currentPath);
+  // Fetch bucket contents for current path
+  const fetchBucketContents = useCallback(
+    async (path: string = currentPath) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(
+          `/api/aws/get-bucket-contents?userId=${encodeURIComponent(
+            userId
+          )}&bucketName=${encodeURIComponent(
+            bucketId
+          )}&prefix=${encodeURIComponent(path)}`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch bucket contents: ${response.statusText}`
+          );
+        }
+
+        const data: BucketContentsResponse = await response.json();
+
+        // Process folders
+        const folderItems: S3Item[] = data.folders.map((folderKey) => {
+          const folderName = folderKey.slice(path.length).replace("/", "");
+          return {
+            key: folderKey,
+            name: folderName,
+            type: "folder" as const,
+            icon: Folder,
+            fileType: "folder",
+          };
+        });
+
+        // Process files
+        const fileItems: S3Item[] = data.files.map((file) => {
+          const fileName = file.key.slice(path.length);
+          return {
+            key: file.key,
+            name: fileName,
+            type: "file" as const,
+            size: formatFileSize(file.size),
+            sizeBytes: file.size,
+            lastModified: formatDate(file.lastModified),
+            icon: getFileIcon(fileName),
+            fileType: getFileType(fileName),
+          };
+        });
+
+        setItems([...folderItems, ...fileItems]);
+        setHasMore(data.isTruncated);
+        setNextToken(data.nextContinuationToken);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [bucketId, userId, currentPath]
+  );
+
+  // Initial load and reload when path changes
+  useEffect(() => {
+    fetchBucketContents(currentPath);
+  }, [currentPath, fetchBucketContents]);
+
+  // Filter and sort items
+  const filteredItems = items.filter((item) => {
     const matchesSearch = item.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
@@ -152,10 +249,14 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
     else if (filterBy === "files") matchesFilter = item.type === "file";
     else if (filterBy !== "all") matchesFilter = item.fileType === filterBy;
 
-    return matchesPath && matchesSearch && matchesFilter;
+    return matchesSearch && matchesFilter;
   });
 
   const sortedItems = [...filteredItems].sort((a, b) => {
+    // Always put folders first
+    if (a.type === "folder" && b.type === "file") return -1;
+    if (a.type === "file" && b.type === "folder") return 1;
+
     let comparison = 0;
 
     switch (sortBy) {
@@ -163,8 +264,8 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
         comparison = a.name.localeCompare(b.name);
         break;
       case "size":
-        const sizeA = a.size ? parseFloat(a.size.split(" ")[0]) : 0;
-        const sizeB = b.size ? parseFloat(b.size.split(" ")[0]) : 0;
+        const sizeA = a.sizeBytes || 0;
+        const sizeB = b.sizeBytes || 0;
         comparison = sizeA - sizeB;
         break;
       case "modified":
@@ -186,13 +287,16 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
   const navigateToPath = (path: string) => {
     setCurrentPath(path);
     setSelectedItems([]);
+    setSearchQuery("");
+    setItems([]); // Clear current items while loading
   };
 
   const handleItemClick = (item: S3Item) => {
     if (item.type === "folder") {
       navigateToPath(item.key);
     } else {
-      console.log("File clicked:", item.name);
+      // Handle file click - could open preview, download, etc.
+      console.log("File clicked:", item.name, item.key);
     }
   };
 
@@ -231,9 +335,48 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
     }
   };
 
+  if (loading && items.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <LoadingSpinner className="h-6 w-6" />
+      </div>
+    );
+  }
+
+  if (error && items.length === 0) {
+    return (
+      <div className="py-6 px-4 md:px-6 w-full max-w-7xl mx-auto font-mono">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Card className="p-8 text-center max-w-md">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-2 font-mono">
+                  Error Loading Bucket
+                </h3>
+                <p className="text-muted-foreground mb-4 font-mono">{error}</p>
+                <Button
+                  onClick={() => fetchBucketContents()}
+                  className="font-mono"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="py-6 px-4 md:px-6 w-full max-w-7xl mx-auto font-mono">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      {/* Header with breadcrumbs */}
+      <div className="flex flex-col gap-2 mb-6">
+        {/* Back link */}
         <div className="flex items-center gap-4">
           <Link
             href="/buckets"
@@ -243,43 +386,56 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             Back to Buckets
           </Link>
         </div>
-
-        <div className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden font-mono">
-          <span
-            className="hover:text-foreground cursor-pointer"
-            onClick={() => navigateToPath("")}
-          >
+        {/* Breadcrumbs and Upload button */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground overflow-hidden font-mono">
+            <span
+              className="hover:text-foreground cursor-pointer font-semibold underline underline-offset-4"
+              onClick={() => navigateToPath("")}
+            >
             {bucketId}
-          </span>
-          {breadcrumbs.map((crumb, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <span>›</span>
-              <span
-                className="hover:text-foreground cursor-pointer truncate"
-                onClick={() =>
-                  navigateToPath(
-                    breadcrumbs.slice(0, index + 1).join("/") + "/"
-                  )
-                }
-              >
-                {crumb}
-              </span>
-            </div>
-          ))}
+            </span>
+            {breadcrumbs.map((crumb, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <span>›</span>
+                <span
+                  className="hover:text-foreground cursor-pointer truncate"
+                  onClick={() =>
+                    navigateToPath(
+                      breadcrumbs.slice(0, index + 1).join("/") + "/"
+                    )
+                  }
+                >
+                  {crumb}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Button size="sm" className="h-10 px-4 font-mono">
+            <Upload className="w-4 h-4 mr-2" />
+            Upload
+          </Button>
         </div>
       </div>
 
+      {/* Title and controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mt-2">
           <h1 className="text-2xl font-bold font-mono">
-            {currentPath || "Root"}
+            {currentPath ? breadcrumbs[breadcrumbs.length - 1] : "Root"}
           </h1>
           <Badge variant="secondary" className="font-mono">
             {folders.length} folders, {files.length} files
           </Badge>
+          {hasMore && (
+            <Badge variant="outline" className="font-mono">
+              More items available
+            </Badge>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -290,6 +446,7 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             />
           </div>
 
+          {/* View mode toggle */}
           <div className="flex items-center gap-1 border rounded-lg p-1 h-10">
             <Button
               variant={viewMode === "grid" ? "default" : "ghost"}
@@ -309,6 +466,7 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             </Button>
           </div>
 
+          {/* Filter dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -359,6 +517,7 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Sort dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -405,13 +564,23 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button size="sm" className="h-10 px-4 font-mono">
-            <Upload className="w-4 h-4 mr-2" />
-            Upload
+          {/* Refresh and Upload buttons */}
+          <Button
+            onClick={() => fetchBucketContents()}
+            variant="outline"
+            size="sm"
+            className="h-10 px-3 font-mono"
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+            />
+            Refresh
           </Button>
         </div>
       </div>
 
+      {/* Content area */}
       {viewMode === "grid" ? (
         <div className="space-y-8">
           {folders.length > 0 && (
@@ -505,7 +674,7 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
                 </tr>
               </thead>
               <tbody>
-                {[...folders, ...files].map((item) => (
+                {sortedItems.map((item) => (
                   <tr
                     key={item.key}
                     className={`border-t hover:bg-muted/50 cursor-pointer ${
@@ -568,7 +737,8 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
         </Card>
       )}
 
-      {filteredItems.length === 0 && (
+      {/* Empty state */}
+      {sortedItems.length === 0 && !loading && (
         <Card className="p-12 text-center">
           <Folder className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2 font-mono">
@@ -584,6 +754,16 @@ export default function BucketDetail({ bucketId }: BucketDetailProps) {
             Upload Files
           </Button>
         </Card>
+      )}
+
+      {/* Loading more indicator */}
+      {loading && items.length > 0 && (
+        <div className="flex items-center justify-center py-8">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="font-mono">Loading...</span>
+          </div>
+        </div>
       )}
     </div>
   );
