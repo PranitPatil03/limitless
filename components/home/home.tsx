@@ -66,10 +66,10 @@ export default function HomePage() {
               Manage Files
             </Link>
             <Link
-              href="/settings"
+              href="/settings?tab=aws"
               className="bg-muted rounded-lg px-4 py-2 font-medium flex items-center gap-2 text-muted-foreground font-mono"
             >
-              Configure AWS
+              Configure AWS Credentials
             </Link>
             <Link
               href="/activity"

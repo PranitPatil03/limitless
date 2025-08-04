@@ -1,22 +1,37 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectItem, SelectContent } from "@/components/ui/select";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  AWSCredentialsForm,
+  StoredCredentialsList,
+} from "@/components/credentials/aws-credentials-form";
+import { redirect, useSearchParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 export default function SettingsPage() {
-  const user = {
-    name: "Jane Doe",
-    email: "jane@example.com",
-    image: "/avatar.png",
-  };
+  const { data: session } = authClient.useSession();
+
+  const user = session?.user;
+
+  if (!user) {
+    redirect("/");
+  }
+
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState("profile");
-  const [defaultRegion, setDefaultRegion] = useState("us-east-1");
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam && ["profile", "config", "aws"].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, [searchParams]);
 
   return (
     <div className="w-full py-10 font-mono px-6">
@@ -36,13 +51,16 @@ export default function SettingsPage() {
             >
               Config
             </TabsTrigger>
+            <TabsTrigger value="aws" className="font-mono px-4 py-2 rounded-md">
+              AWS Credentials
+            </TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="profile">
           <div className="flex flex-col items-center justify-center min-h-[400px]">
             <Card className="p-8 flex flex-col items-center gap-6 w-full">
               <Avatar className="w-20 h-20">
-                <AvatarImage src={user.image} alt={user.name} />
+                <AvatarImage src={user.image || undefined} alt={user.name} />
                 <AvatarFallback>{user.name[0]}</AvatarFallback>
               </Avatar>
               <div className="text-center">
@@ -57,57 +75,7 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="config">
           <div className="space-y-8">
-            {/* <Card className="p-6 space-y-4">
-              <div className="text-lg font-bold font-mono mb-2">Profile</div>
-              <div>
-                <label className="block mb-1 font-mono">Name</label>
-                <Input className="font-mono" value={user.name} />
-              </div>
-              <div>
-                <label className="block mb-1 font-mono">Email</label>
-                <Input className="font-mono" value={user.email} />
-              </div>
-            </Card> */}
-
             <div className="flex flex-col lg:flex-row gap-8 items-start">
-              <Card className="p-6 space-y-4 flex-1">
-                <div className="text-lg font-bold font-mono mb-2">
-                  AWS Credentials
-                </div>
-                <div>
-                  <label className="block mb-1 font-mono">Access Key ID</label>
-                  <Input className="font-mono" placeholder="AKIA..." />
-                </div>
-                <div>
-                  <label className="block mb-1 font-mono">
-                    Secret Access Key
-                  </label>
-                  <Input
-                    className="font-mono"
-                    type="password"
-                    placeholder="••••••••"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 font-mono">Default Region</label>
-                  <Select
-                    value={defaultRegion}
-                    onValueChange={setDefaultRegion}
-                  >
-                    <SelectContent>
-                      <SelectItem value="us-east-1">
-                        US East (N. Virginia)
-                      </SelectItem>
-                      <SelectItem value="us-west-2">
-                        US West (Oregon)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="w-full font-mono mt-2">
-                  Save Credentials
-                </Button>
-              </Card>
               <Card className="p-6 space-y-4 flex-1">
                 <div className="text-lg font-bold font-mono mb-2">
                   Storage Settings
@@ -137,6 +105,27 @@ export default function SettingsPage() {
                 </div>
                 <Button className="w-full font-mono mt-2">Save Settings</Button>
               </Card>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="aws">
+          <div className="space-y-8">
+            <div className="flex flex-col lg:flex-row gap-8 items-start">
+              <div className="flex-1">
+                <div className="text-lg font-bold font-mono mb-4">
+                  Add New AWS Credentials
+                </div>
+                <AWSCredentialsForm
+                  userId={user.id}
+                  onSave={() => {}}
+                />
+              </div>
+              <div className="flex-1">
+                <div className="text-lg font-bold font-mono mb-4">
+                  Your Stored Credentials
+                </div>
+                <StoredCredentialsList userId={user.id} />
+              </div>
             </div>
           </div>
         </TabsContent>

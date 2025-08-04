@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
@@ -10,15 +9,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean
-  image         String?
-  createdAt     DateTime
-  updatedAt     DateTime
-  sessions      Session[]
-  accounts      Account[]
+  id             String           @id
+  name           String
+  email          String
+  emailVerified  Boolean
+  image          String?
+  createdAt      DateTime
+  updatedAt      DateTime
+  sessions       Session[]
+  accounts       Account[]
+  awsCredentials AWSCredentials[]
 
   @@unique([email])
   @@map("user")
@@ -67,4 +67,20 @@ model Verification {
   updatedAt  DateTime?
 
   @@map("verification")
+}
+
+model AWSCredentials {
+  id                       String   @id
+  encryptedAccessKeyId     String
+  encryptedSecretAccessKey String
+  encryptedSessionToken    String?
+  salt                     String
+  iv                       String
+  expiration               DateTime
+  createdAt                DateTime
+  updatedAt                DateTime
+  userId                   String
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("aws_credentials")
 }
