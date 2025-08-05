@@ -5,12 +5,23 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectItem, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectItem,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth-client";
 import { Loader2, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 const awsRegions = [
   { value: "us-east-1", label: "US East (N. Virginia)" },
@@ -199,7 +210,6 @@ export default function SettingsPage() {
         <TabsContent value="config">
           <div className="space-y-8">
             <div className="flex flex-col lg:flex-row gap-8 items-start">
-
               <Card className="p-6 space-y-4 flex-1">
                 <div className="text-lg font-bold font-mono mb-2">
                   AWS Credentials
@@ -229,11 +239,17 @@ export default function SettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {awsRegions.map((region) => (
-                        <SelectItem key={region.value} value={region.value} className="font-mono">
+                        <SelectItem
+                          key={region.value}
+                          value={region.value}
+                          className="font-mono"
+                        >
                           {region.label}
                         </SelectItem>
                       ))}
-                      <SelectItem value="other" className="font-mono">Other (Custom)</SelectItem>
+                      <SelectItem value="other" className="font-mono">
+                        Other (Custom)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   {isOtherRegion && (
@@ -263,76 +279,41 @@ export default function SettingsPage() {
                     {message}
                   </div>
                 )}
-
-                <div className="mt-6">
-                  <div className="text-md font-semibold font-mono mb-2">
-                    Saved Roles
-                  </div>
-                  {fetchingRoles ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Loader2 className="animate-spin h-4 w-4" />
-                      Loading roles...
-                    </div>
-                  ) : userRoles.length === 0 ? (
-                    <div className="text-sm text-muted-foreground font-mono">
-                      No roles saved.
-                    </div>
-                  ) : (
-                    <ul className="space-y-2">
-                      {userRoles.map((roleArn) => (
-                        <li
-                          key={roleArn}
-                          className="flex items-center justify-between px-3 py-2 border rounded-md text-sm"
-                        >
-                          <span className="break-all font-mono">{roleArn}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteRole(roleArn)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
               </Card>
 
               <Card className="p-6 space-y-4 flex-1">
                 <div className="text-lg font-bold font-mono mb-2">
-                  Storage Settings
+                  Saved Roles
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="font-mono">Object Versioning</span>
-                  <Switch />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="font-mono">Server-Side Encryption</span>
-                  <Switch />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <label className="block mb-1 font-mono">
-                    Default Upload Region
-                  </label>
-                  <Select defaultValue="us-east-1">
-                    <SelectTrigger className="font-mono">
-                      <SelectValue placeholder="Select upload region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {awsRegions.map((region) => (
-                        <SelectItem key={region.value} value={region.value} className="font-mono">
-                          {region.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button className="w-full font-mono mt-2">Save Settings</Button>
+                {fetchingRoles ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Loader2 className="animate-spin h-4 w-4" />
+                    Loading roles...
+                  </div>
+                ) : userRoles.length === 0 ? (
+                  <div className="text-sm text-muted-foreground font-mono">
+                    No roles saved.
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {userRoles.map((roleArn) => (
+                      <li
+                        key={roleArn}
+                        className="flex items-center justify-between px-3 py-2 border rounded-md text-sm"
+                      >
+                        <span className="break-all font-mono">{roleArn}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteRole(roleArn)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </Card>
             </div>
           </div>

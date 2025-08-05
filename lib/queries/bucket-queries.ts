@@ -2,7 +2,6 @@ import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { getBucketDetails } from "@/lib/aws/get-bucket-detailes";
 import { fetchUserBuckets } from "@/lib/aws/get-user-buckets";
 
-// Query Keys - Centralized for consistency
 export const bucketKeys = {
   all: ["buckets"] as const,
   userBuckets: (userId: string) => [...bucketKeys.all, "user", userId] as const,
@@ -10,17 +9,33 @@ export const bucketKeys = {
     [...bucketKeys.all, "details", userId, bucketName] as const,
 };
 
-// Enhanced Bucket Interface
+export interface UserBucket {
+  name: string;
+  privacy?: "Public" | "Private";
+}
+
+export interface BucketDetailsResponse {
+  region?: string;
+  privacy?: "Public" | "Private";
+  totalFiles?: number;
+  files?: number;
+  totalSizeBytes?: number;
+  size?: number;
+  creationDate?: string;
+  created?: string;
+  // Add other properties your API might return
+  [key: string]: unknown; // Allow for additional unknown properties
+}
+
 export interface Bucket {
   name: string;
   region?: string;
   privacy?: "Public" | "Private";
-  files?: number;
-  size?: string | number;
+  files?: number | string;
+  size?: string;
   created?: string;
 }
 
-// Utility function
 function formatSize(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -29,34 +44,30 @@ function formatSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-// Hook to fetch user buckets
 export function useUserBuckets(userId: string | undefined) {
-  return useQuery({
+  return useQuery<UserBucket[]>({
     queryKey: bucketKeys.userBuckets(userId || ""),
     queryFn: () => fetchUserBuckets(userId!),
-    enabled: !!userId, // Only run when userId exists
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
-// Hook to fetch bucket details
 export function useBucketDetails(userId: string, bucketName: string) {
-  return useQuery({
+  return useQuery<BucketDetailsResponse>({
     queryKey: bucketKeys.bucketDetails(userId, bucketName),
     queryFn: () => getBucketDetails(userId, bucketName),
     enabled: !!userId && !!bucketName,
-    staleTime: 3 * 60 * 1000, // 3 minutes (bucket details change more frequently)
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    retry: 2, // Fewer retries for individual bucket details
+    staleTime: 3 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: 2,
   });
 }
 
-// Main hook that combines user buckets with their details
 export function useAllBucketsWithDetails(userId: string | undefined) {
   const queryClient = useQueryClient();
 
-  // First, get the list of user buckets
   const {
     data: userBuckets = [],
     isLoading: isBucketsLoading,
@@ -64,50 +75,45 @@ export function useAllBucketsWithDetails(userId: string | undefined) {
     refetch: refetchBuckets,
   } = useUserBuckets(userId);
 
-  // Then, fetch details for each bucket using useQueries
   const bucketDetailQueries = useQueries({
-    queries: userBuckets.map(
-      (bucket: { name: string; privacy: "Public" | "Private" }) => ({
-        queryKey: bucketKeys.bucketDetails(userId || "", bucket.name),
-        queryFn: () => getBucketDetails(userId!, bucket.name),
-        enabled: !!userId && !!bucket.name,
-        staleTime: 3 * 60 * 1000,
-        gcTime: 5 * 60 * 1000,
-        retry: 1,
-      })
-    ),
+    queries: userBuckets.map((bucket: UserBucket) => ({
+      queryKey: bucketKeys.bucketDetails(userId || "", bucket.name),
+      queryFn: (): Promise<BucketDetailsResponse> =>
+        getBucketDetails(userId!, bucket.name),
+      enabled: !!userId && !!bucket.name,
+      staleTime: 3 * 60 * 1000,
+      gcTime: 5 * 60 * 1000,
+      retry: 1,
+    })),
   });
 
-  // Combine the data
   const allBucketsWithDetails: Bucket[] = userBuckets.map(
-    (
-      bucket: {
-        name: string;
-        privacy: "Public" | "Private";
-        region: string;
-        files: number;
-        size: number;
-        created: string;
-      },
-      index: number
-    ) => {
+    (bucket: UserBucket, index: number) => {
       const detailQuery = bucketDetailQueries[index];
+      const detailData = detailQuery.data as BucketDetailsResponse | undefined;
 
-      if (detailQuery.data) {
+      if (detailData) {
+        // Handle different possible property names from your API
+        const sizeBytes = detailData.totalSizeBytes || detailData.size || 0;
+        const fileCount = detailData.totalFiles || detailData.files || 0;
+        const creationDate = detailData.creationDate || detailData.created;
+
         return {
           name: bucket.name,
-          region: bucket.region,
-          privacy: bucket.privacy,
-          files: bucket.files,
-          size: formatSize(bucket.size || 0),
-          created: new Date(bucket.created).toLocaleDateString(),
+          region: detailData.region || "-",
+          privacy: bucket.privacy || detailData.privacy || "Private",
+          files: fileCount,
+          size: formatSize(typeof sizeBytes === "number" ? sizeBytes : 0),
+          created: creationDate
+            ? new Date(creationDate).toLocaleDateString()
+            : "-",
         };
       }
 
-      // Return basic info if details are loading or failed
+      // Return basic info with loading states
       return {
         name: bucket.name,
-        privacy: bucket.privacy,
+        privacy: bucket.privacy || "Private",
         region: detailQuery.isLoading ? "Loading..." : "-",
         files: detailQuery.isLoading ? "Loading..." : "-",
         size: detailQuery.isLoading ? "Loading..." : "-",
@@ -125,14 +131,11 @@ export function useAllBucketsWithDetails(userId: string | undefined) {
     ...bucketDetailQueries.map((q) => q.error),
   ].filter(Boolean);
 
-  // Manual refresh function
   const refreshAll = async () => {
-    // Invalidate all bucket-related queries for this user
     await queryClient.invalidateQueries({
       queryKey: bucketKeys.userBuckets(userId || ""),
     });
 
-    // Also invalidate all bucket details for this user
     await queryClient.invalidateQueries({
       queryKey: [...bucketKeys.all, "details", userId],
     });
@@ -144,7 +147,6 @@ export function useAllBucketsWithDetails(userId: string | undefined) {
     hasError,
     errors,
     refetch: refreshAll,
-
     totalBuckets: userBuckets.length,
     loadedDetails: bucketDetailQueries.filter((q) => q.data).length,
   };

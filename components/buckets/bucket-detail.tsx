@@ -12,6 +12,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -37,7 +52,6 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
-  HomeIcon,
 } from "lucide-react";
 import { LoadingSpinner } from "../ui/spinner";
 
@@ -170,6 +184,15 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextToken, setNextToken] = useState<string | undefined>();
+  const [initialLoad, setInitialLoad] = useState(true);
+  
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadTab, setUploadTab] = useState<"files" | "folder">("files");
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [folderName, setFolderName] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Fetch bucket contents for current path
   const fetchBucketContents = useCallback(
@@ -228,6 +251,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
         setLoading(false);
+        setInitialLoad(false);
       }
     },
     [bucketId, userId, currentPath]
@@ -306,6 +330,118 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
     );
   };
 
+  // Upload functions
+  const handleUploadClick = () => {
+    setShowUploadModal(true);
+  };
+
+  const handleCloseUploadModal = () => {
+    setShowUploadModal(false);
+    setSelectedFiles(null);
+    setFolderName("");
+    setUploadTab("files");
+    setIsUploading(false);
+    setIsDragging(false);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedFiles(event.target.files);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const files = event.dataTransfer.files;
+    setSelectedFiles(files);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!folderName.trim()) {
+      toast.error("Please enter a folder name");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const folderPath = currentPath + folderName.trim() + "/";
+      
+      const response = await fetch('/api/aws/create-folder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          bucketName: bucketId,
+          folderPath: folderPath,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success(`Folder "${folderName}" created successfully!`);
+        await fetchBucketContents();
+        handleCloseUploadModal();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to create folder");
+      }
+    } catch (error) {
+      console.error("Error creating folder:", error);
+      toast.error("Failed to create folder");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFiles || selectedFiles.length === 0) {
+      toast.error("Please select files to upload");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('userId', userId);
+      formData.append('bucketName', bucketId);
+      formData.append('currentPath', currentPath);
+      
+      Array.from(selectedFiles).forEach(file => {
+        formData.append('files', file);
+      });
+
+      const response = await fetch('/api/aws/upload-files', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        await fetchBucketContents();
+        handleCloseUploadModal();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to upload files");
+      }
+    } catch (error) {
+      console.error("Error uploading files:", error);
+      toast.error("Failed to upload files");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const getSortIcon = () => {
     return sortDirection === "asc" ? (
       <SortAsc className="w-4 h-4" />
@@ -335,15 +471,8 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
     }
   };
 
-  if (loading && items.length === 0) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <LoadingSpinner className="h-6 w-6" />
-      </div>
-    );
-  }
-
-  if (error && items.length === 0) {
+  // Show error state only on initial load failure
+  if (error && initialLoad) {
     return (
       <div className="py-6 px-4 md:px-6 w-full max-w-7xl mx-auto font-mono">
         <div className="flex items-center justify-center min-h-[400px]">
@@ -393,7 +522,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
               className="hover:text-foreground cursor-pointer font-semibold underline underline-offset-4"
               onClick={() => navigateToPath("")}
             >
-            {bucketId}
+              {bucketId}
             </span>
             {breadcrumbs.map((crumb, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -411,7 +540,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
               </div>
             ))}
           </div>
-          <Button size="sm" className="h-10 px-4 font-mono">
+          <Button size="sm" className="h-10 px-4 font-mono" onClick={handleUploadClick}>
             <Upload className="w-4 h-4 mr-2" />
             Upload
           </Button>
@@ -421,12 +550,14 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
       {/* Title and controls */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div className="flex items-center gap-3 mt-2">
-          <h1 className="text-2xl font-bold font-mono">
-            {currentPath ? breadcrumbs[breadcrumbs.length - 1] : "Root"}
+          <h1 className="text-3xl font-bold font-mono">
+            {currentPath ? breadcrumbs[breadcrumbs.length - 1] : "root"}
           </h1>
-          <Badge variant="secondary" className="font-mono">
-            {folders.length} folders, {files.length} files
-          </Badge>
+          {!loading && (
+            <Badge variant="secondary" className="font-mono">
+              {folders.length} folders, {files.length} files
+            </Badge>
+          )}
           {hasMore && (
             <Badge variant="outline" className="font-mono">
               More items available
@@ -564,7 +695,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Refresh and Upload buttons */}
+          {/* Refresh button */}
           <Button
             onClick={() => fetchBucketContents()}
             variant="outline"
@@ -580,191 +711,350 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
         </div>
       </div>
 
-      {/* Content area */}
-      {viewMode === "grid" ? (
-        <div className="space-y-8">
-          {folders.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-4 font-mono">Folders</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {folders.map((folder) => (
-                  <Card
-                    key={folder.key}
-                    className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
-                      selectedItems.includes(folder.key)
-                        ? "ring-2 ring-primary"
-                        : ""
-                    }`}
-                    onClick={() => handleItemClick(folder)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      handleItemSelect(folder.key);
-                    }}
-                  >
-                    <div className="flex flex-col items-center text-center gap-3">
-                      <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-                        <folder.icon className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div className="w-full">
-                        <p className="font-medium text-sm truncate font-mono">
-                          {folder.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          Folder
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {files.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-4 font-mono">Files</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {files.map((file) => (
-                  <Card
-                    key={file.key}
-                    className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
-                      selectedItems.includes(file.key)
-                        ? "ring-2 ring-primary"
-                        : ""
-                    }`}
-                    onClick={() => handleItemClick(file)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      handleItemSelect(file.key);
-                    }}
-                  >
-                    <div className="flex flex-col items-center text-center gap-3">
-                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                        <file.icon className="w-6 h-6 text-gray-600" />
-                      </div>
-                      <div className="w-full">
-                        <p className="font-medium text-sm truncate font-mono">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {file.size}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
+      {/* Content area with conditional loading */}
+      {loading && items.length === 0 ? (
+        // Show loading spinner in content area when initially loading
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-4">
+            <LoadingSpinner className="h-8 w-8" />
+            <p className="text-muted-foreground font-mono">Loading bucket contents...</p>
+          </div>
         </div>
       ) : (
-        <Card className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left p-4 font-medium font-mono">Name</th>
-                  <th className="text-left p-4 font-medium font-mono">Size</th>
-                  <th className="text-left p-4 font-medium font-mono">
-                    Last Modified
-                  </th>
-                  <th className="text-left p-4 font-medium font-mono">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedItems.map((item) => (
-                  <tr
-                    key={item.key}
-                    className={`border-t hover:bg-muted/50 cursor-pointer ${
-                      selectedItems.includes(item.key) ? "bg-primary/5" : ""
-                    }`}
-                    onClick={() => handleItemClick(item)}
+        <>
+          {/* Content display */}
+          {viewMode === "grid" ? (
+            <div className="space-y-8">
+              {folders.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 font-mono">Folders</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {folders.map((folder) => (
+                      <Card
+                        key={folder.key}
+                        className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
+                          selectedItems.includes(folder.key)
+                            ? "ring-2 ring-primary"
+                            : ""
+                        }`}
+                        onClick={() => handleItemClick(folder)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleItemSelect(folder.key);
+                        }}
+                      >
+                        <div className="flex flex-col items-center text-center gap-3">
+                          <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
+                            <folder.icon className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div className="w-full">
+                            <p className="font-medium text-sm truncate font-mono">
+                              {folder.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              Folder
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {files.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 font-mono">Files</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {files.map((file) => (
+                      <Card
+                        key={file.key}
+                        className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
+                          selectedItems.includes(file.key)
+                            ? "ring-2 ring-primary"
+                            : ""
+                        }`}
+                        onClick={() => handleItemClick(file)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleItemSelect(file.key);
+                        }}
+                      >
+                        <div className="flex flex-col items-center text-center gap-3">
+                          <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                            <file.icon className="w-6 h-6 text-gray-600" />
+                          </div>
+                          <div className="w-full">
+                            <p className="font-medium text-sm truncate font-mono">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {file.size}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Card className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-4 font-medium font-mono">Name</th>
+                      <th className="text-left p-4 font-medium font-mono">Size</th>
+                      <th className="text-left p-4 font-medium font-mono">
+                        Last Modified
+                      </th>
+                      <th className="text-left p-4 font-medium font-mono">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedItems.map((item) => (
+                      <tr
+                        key={item.key}
+                        className={`border-t hover:bg-muted/50 cursor-pointer ${
+                          selectedItems.includes(item.key) ? "bg-primary/5" : ""
+                        }`}
+                        onClick={() => handleItemClick(item)}
+                      >
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <item.icon className="w-5 h-5 text-blue-500" />
+                            <span className="font-medium font-mono">
+                              {item.name}
+                            </span>
+                            {item.type === "folder" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs font-mono"
+                              >
+                                Folder
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-muted-foreground font-mono">
+                          {item.size || "—"}
+                        </td>
+                        <td className="p-4 text-muted-foreground font-mono">
+                          {item.lastModified || "—"}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Empty state */}
+          {sortedItems.length === 0 && !loading && (
+            <Card className="p-12 text-center">
+              <Folder className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2 font-mono">
+                No files found
+              </h3>
+              <p className="text-muted-foreground mb-4 font-mono">
+                {searchQuery
+                  ? "Try adjusting your search terms"
+                  : "This folder is empty"}
+              </p>
+              <Button className="font-mono" onClick={handleUploadClick}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Files
+              </Button>
+            </Card>
+          )}
+
+          {/* Loading more indicator (when there are already items displayed) */}
+          {loading && items.length > 0 && (
+            <div className="flex items-center justify-center py-8">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="font-mono">Refreshing...</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Upload Modal */}
+      <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-mono">Upload to {bucketId}</DialogTitle>
+            <DialogDescription className="font-mono">
+              {currentPath ? (
+                <>Upload files or create folders in <span className="font-semibold">/{currentPath}</span></>
+              ) : (
+                "Upload files or create folders in the root directory"
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={uploadTab} onValueChange={(value) => setUploadTab(value as "files" | "folder")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 font-mono">
+              <TabsTrigger value="files" className="font-mono">Add Files</TabsTrigger>
+              <TabsTrigger value="folder" className="font-mono">Create Folder</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="files" className="space-y-4 mt-6">
+              <div className="space-y-4">
+                <div 
+                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                    isDragging 
+                      ? 'border-primary bg-primary/5' 
+                      : 'border-muted hover:border-primary/50'
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
+                  <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <div className="space-y-2">
+                    <p className="text-lg font-medium font-mono">Choose files to upload</p>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      Drag and drop files here, or click to browse
+                    </p>
+                  </div>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="file-upload"
+                  />
+                  <label
+                    htmlFor="file-upload"
+                    className="inline-block mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md cursor-pointer hover:bg-primary/90 transition-colors font-mono"
                   >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5 text-blue-500" />
-                        <span className="font-medium font-mono">
-                          {item.name}
-                        </span>
-                        {item.type === "folder" && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs font-mono"
-                          >
-                            Folder
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-muted-foreground font-mono">
-                      {item.size || "—"}
-                    </td>
-                    <td className="p-4 text-muted-foreground font-mono">
-                      {item.lastModified || "—"}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                    Browse Files
+                  </label>
+                </div>
 
-      {/* Empty state */}
-      {sortedItems.length === 0 && !loading && (
-        <Card className="p-12 text-center">
-          <Folder className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2 font-mono">
-            No files found
-          </h3>
-          <p className="text-muted-foreground mb-4 font-mono">
-            {searchQuery
-              ? "Try adjusting your search terms"
-              : "This folder is empty"}
-          </p>
-          <Button className="font-mono">
-            <Upload className="w-4 h-4 mr-2" />
-            Upload Files
-          </Button>
-        </Card>
-      )}
+                {selectedFiles && selectedFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="font-medium font-mono">Selected files:</p>
+                    <div className="max-h-32 overflow-y-auto border rounded-md p-3 bg-muted/50">
+                      {Array.from(selectedFiles).map((file, index) => (
+                        <div key={index} className="flex items-center justify-between py-1">
+                          <span className="text-sm font-mono truncate">{file.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
 
-      {/* Loading more indicator */}
-      {loading && items.length > 0 && (
-        <div className="flex items-center justify-center py-8">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="font-mono">Loading...</span>
-          </div>
-        </div>
-      )}
+            <TabsContent value="folder" className="space-y-4 mt-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="folder-name" className="block text-sm font-medium font-mono">
+                    Folder Name
+                  </label>
+                  <Input
+                    id="folder-name"
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    placeholder="Enter folder name"
+                    className="font-mono"
+                    disabled={isUploading}
+                  />
+                  <p className="text-xs text-muted-foreground font-mono">
+                    Folder will be created at: {currentPath ? `/${currentPath}${folderName}` : `/${folderName}`}
+                  </p>
+                </div>
+
+                <div className="border rounded-lg p-4 bg-muted/50">
+                  <div className="flex items-start gap-3">
+                    <Folder className="w-5 h-5 text-blue-500 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium font-mono">Creating a Folder</h4>
+                      <p className="text-sm text-muted-foreground font-mono mt-1">
+                        In S3, folders are virtual. They&apos;re created when you add files to them. 
+                        This will create an empty placeholder to establish the folder structure.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter className="flex gap-2 pt-6 border-t">
+            <Button variant="outline" onClick={handleCloseUploadModal} disabled={isUploading} className="font-mono">
+              Cancel
+            </Button>
+            {uploadTab === "files" ? (
+              <Button 
+                onClick={handleFileUpload} 
+                disabled={!selectedFiles || selectedFiles.length === 0 || isUploading}
+                className="font-mono"
+              >
+                {isUploading ? (
+                  <>
+                    <LoadingSpinner className="w-4 h-4 mr-2" />
+                    Uploading...
+                  </>
+                ) : (
+                  `Upload ${selectedFiles?.length || 0} file(s)`
+                )}
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleCreateFolder} 
+                disabled={!folderName.trim() || isUploading}
+                className="font-mono"
+              >
+                {isUploading ? (
+                  <>
+                    <LoadingSpinner className="w-4 h-4 mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Folder"
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
