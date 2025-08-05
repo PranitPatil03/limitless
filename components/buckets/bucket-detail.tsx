@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
 import {
   Folder,
@@ -52,6 +53,14 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  FileCode,
+  Music,
+  FileSpreadsheet,
+  Presentation,
+  Book,
+  X,
+  ExternalLink,
+  Maximize2,
 } from "lucide-react";
 import { LoadingSpinner } from "../ui/spinner";
 
@@ -93,8 +102,10 @@ type FilterOption =
   | "pdf"
   | "image"
   | "video"
+  | "audio"
   | "archive"
-  | "text";
+  | "document"
+  | "code";
 
 // Helper function to get file icon based on extension
 const getFileIcon = (
@@ -110,6 +121,7 @@ const getFileIcon = (
     case "bmp":
     case "svg":
     case "webp":
+    case "ico":
       return ImageIcon;
     case "mp4":
     case "avi":
@@ -117,13 +129,56 @@ const getFileIcon = (
     case "wmv":
     case "flv":
     case "webm":
+    case "mkv":
+    case "m4v":
       return Video;
+    case "mp3":
+    case "wav":
+    case "flac":
+    case "aac":
+    case "ogg":
+    case "m4a":
+      return Music;
     case "zip":
     case "rar":
     case "7z":
     case "tar":
     case "gz":
+    case "bz2":
       return Archive;
+    case "pdf":
+      return Book;
+    case "doc":
+    case "docx":
+    case "txt":
+    case "rtf":
+      return FileText;
+    case "xls":
+    case "xlsx":
+    case "csv":
+      return FileSpreadsheet;
+    case "ppt":
+    case "pptx":
+      return Presentation;
+    case "js":
+    case "ts":
+    case "jsx":
+    case "tsx":
+    case "html":
+    case "css":
+    case "json":
+    case "xml":
+    case "py":
+    case "java":
+    case "cpp":
+    case "c":
+    case "php":
+    case "rb":
+    case "go":
+    case "rs":
+    case "sh":
+    case "sql":
+      return FileCode;
     default:
       return FileText;
   }
@@ -134,17 +189,22 @@ const getFileType = (fileName: string): string => {
   const extension = fileName.split(".").pop()?.toLowerCase();
 
   if (
-    ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp"].includes(
+    ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp", "ico"].includes(
       extension || ""
     )
   )
     return "image";
-  if (["mp4", "avi", "mov", "wmv", "flv", "webm"].includes(extension || ""))
+  if (["mp4", "avi", "mov", "wmv", "flv", "webm", "mkv", "m4v"].includes(extension || ""))
     return "video";
-  if (["zip", "rar", "7z", "tar", "gz"].includes(extension || ""))
+  if (["mp3", "wav", "flac", "aac", "ogg", "m4a"].includes(extension || ""))
+    return "audio";
+  if (["zip", "rar", "7z", "tar", "gz", "bz2"].includes(extension || ""))
     return "archive";
   if (["pdf"].includes(extension || "")) return "pdf";
-  if (["txt", "md", "csv", "log"].includes(extension || "")) return "text";
+  if (["doc", "docx", "txt", "rtf", "md"].includes(extension || "")) return "document";
+  if (["xls", "xlsx", "csv"].includes(extension || "")) return "spreadsheet";
+  if (["ppt", "pptx"].includes(extension || "")) return "presentation";
+  if (["js", "ts", "jsx", "tsx", "html", "css", "json", "xml", "py", "java", "cpp", "c", "php", "rb", "go", "rs", "sh", "sql"].includes(extension || "")) return "code";
   return "document";
 };
 
@@ -183,8 +243,11 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [nextToken, setNextToken] = useState<string | undefined>();
   const [initialLoad, setInitialLoad] = useState(true);
+  
+  // File preview state
+  const [previewFile, setPreviewFile] = useState<S3Item | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -246,7 +309,6 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
 
         setItems([...folderItems, ...fileItems]);
         setHasMore(data.isTruncated);
-        setNextToken(data.nextContinuationToken);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
@@ -319,9 +381,62 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
     if (item.type === "folder") {
       navigateToPath(item.key);
     } else {
-      // Handle file click - could open preview, download, etc.
-      console.log("File clicked:", item.name, item.key);
+      // Handle file preview based on file type
+      handleFilePreview(item);
     }
+  };
+
+  const handleFilePreview = (file: S3Item) => {
+    const fileType = getFileType(file.name);
+    
+    if (fileType === "image") {
+      // For images, open in preview modal
+      setPreviewFile(file);
+      setShowPreview(true);
+    } else if (fileType === "video") {
+      // For videos, open in preview modal
+      setPreviewFile(file);
+      setShowPreview(true);
+    } else if (fileType === "pdf") {
+      // For PDFs, open in new tab
+      handleFileDownload(file, true);
+    } else {
+      // For other files, show options
+      console.log("File clicked:", file.name, file.key);
+      // You can add a context menu or options here
+    }
+  };
+
+  const handleFileDownload = async (file: S3Item, openInNewTab: boolean = false) => {
+    try {
+      const downloadUrl = `/api/aws/download-file?userId=${encodeURIComponent(
+        userId
+      )}&bucketName=${encodeURIComponent(bucketId)}&key=${encodeURIComponent(
+        file.key
+      )}`;
+      
+      if (openInNewTab) {
+        window.open(downloadUrl, '_blank');
+      } else {
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      toast.error("Failed to download file");
+    }
+  };
+
+  const getFilePreviewUrl = (file: S3Item) => {
+    return `/api/aws/get-file-url?userId=${encodeURIComponent(
+      userId
+    )}&bucketName=${encodeURIComponent(bucketId)}&key=${encodeURIComponent(
+      file.key
+    )}`;
   };
 
   const handleItemSelect = (key: string) => {
@@ -462,10 +577,14 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
         return "Images";
       case "video":
         return "Videos";
+      case "audio":
+        return "Audio";
       case "archive":
         return "Archives";
-      case "text":
-        return "Text";
+      case "document":
+        return "Documents";
+      case "code":
+        return "Code";
       default:
         return "All";
     }
@@ -626,7 +745,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setFilterBy("pdf")}>
-                <FileText className="w-4 h-4 mr-2" />
+                <Book className="w-4 h-4 mr-2" />
                 PDF Documents
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setFilterBy("image")}>
@@ -637,13 +756,21 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                 <Video className="w-4 h-4 mr-2" />
                 Videos
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilterBy("audio")}>
+                <Music className="w-4 h-4 mr-2" />
+                Audio Files
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setFilterBy("archive")}>
                 <Archive className="w-4 h-4 mr-2" />
                 Archives
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilterBy("text")}>
+              <DropdownMenuItem onClick={() => setFilterBy("document")}>
                 <FileText className="w-4 h-4 mr-2" />
-                Text Files
+                Documents
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setFilterBy("code")}>
+                <FileCode className="w-4 h-4 mr-2" />
+                Code Files
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -781,16 +908,38 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                         }}
                       >
                         <div className="flex flex-col items-center text-center gap-3">
-                          <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                            <file.icon className="w-6 h-6 text-gray-600" />
+                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            file.fileType === "image" ? "bg-green-100 dark:bg-green-900/20" :
+                            file.fileType === "video" ? "bg-purple-100 dark:bg-purple-900/20" :
+                            file.fileType === "audio" ? "bg-pink-100 dark:bg-pink-900/20" :
+                            file.fileType === "pdf" ? "bg-red-100 dark:bg-red-900/20" :
+                            file.fileType === "code" ? "bg-yellow-100 dark:bg-yellow-900/20" :
+                            file.fileType === "archive" ? "bg-orange-100 dark:bg-orange-900/20" :
+                            "bg-gray-100 dark:bg-gray-800"
+                          }`}>
+                            <file.icon className={`w-6 h-6 ${
+                              file.fileType === "image" ? "text-green-600" :
+                              file.fileType === "video" ? "text-purple-600" :
+                              file.fileType === "audio" ? "text-pink-600" :
+                              file.fileType === "pdf" ? "text-red-600" :
+                              file.fileType === "code" ? "text-yellow-600" :
+                              file.fileType === "archive" ? "text-orange-600" :
+                              "text-gray-600"
+                            }`} />
                           </div>
                           <div className="w-full">
                             <p className="font-medium text-sm truncate font-mono">
                               {file.name}
                             </p>
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {file.size}
-                            </p>
+                            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground font-mono">
+                              <span>{file.size}</span>
+                              {file.fileType && file.fileType !== "document" && (
+                                <>
+                                  <span>•</span>
+                                  <span className="capitalize">{file.fileType}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </Card>
@@ -826,18 +975,48 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                       >
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <item.icon className="w-5 h-5 text-blue-500" />
-                            <span className="font-medium font-mono">
-                              {item.name}
-                            </span>
-                            {item.type === "folder" && (
-                              <Badge
-                                variant="secondary"
-                                className="text-xs font-mono"
-                              >
-                                Folder
-                              </Badge>
-                            )}
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              item.type === "folder" ? "bg-blue-100 dark:bg-blue-900/20" :
+                              item.fileType === "image" ? "bg-green-100 dark:bg-green-900/20" :
+                              item.fileType === "video" ? "bg-purple-100 dark:bg-purple-900/20" :
+                              item.fileType === "audio" ? "bg-pink-100 dark:bg-pink-900/20" :
+                              item.fileType === "pdf" ? "bg-red-100 dark:bg-red-900/20" :
+                              item.fileType === "code" ? "bg-yellow-100 dark:bg-yellow-900/20" :
+                              item.fileType === "archive" ? "bg-orange-100 dark:bg-orange-900/20" :
+                              "bg-gray-100 dark:bg-gray-800"
+                            }`}>
+                              <item.icon className={`w-4 h-4 ${
+                                item.type === "folder" ? "text-blue-600" :
+                                item.fileType === "image" ? "text-green-600" :
+                                item.fileType === "video" ? "text-purple-600" :
+                                item.fileType === "audio" ? "text-pink-600" :
+                                item.fileType === "pdf" ? "text-red-600" :
+                                item.fileType === "code" ? "text-yellow-600" :
+                                item.fileType === "archive" ? "text-orange-600" :
+                                "text-gray-600"
+                              }`} />
+                            </div>
+                            <div>
+                              <span className="font-medium font-mono">
+                                {item.name}
+                              </span>
+                              {item.type === "folder" && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs font-mono ml-2"
+                                >
+                                  Folder
+                                </Badge>
+                              )}
+                              {item.fileType && item.fileType !== "document" && item.type === "file" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-mono ml-2 capitalize"
+                                >
+                                  {item.fileType}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="p-4 text-muted-foreground font-mono">
@@ -852,6 +1031,13 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (item.type === "file") {
+                                  handleFilePreview(item);
+                                }
+                              }}
+                              disabled={item.type === "folder"}
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -859,16 +1045,56 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (item.type === "file") {
+                                  handleFileDownload(item);
+                                }
+                              }}
+                              disabled={item.type === "folder"}
                             >
                               <Download className="w-4 h-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                            >
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="font-mono">
+                                {item.type === "file" && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => handleFilePreview(item)}>
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      Preview
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleFileDownload(item)}>
+                                      <Download className="w-4 h-4 mr-2" />
+                                      Download
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleFileDownload(item, true)}>
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      Open in New Tab
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                  </>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(item.key);
+                                    toast.success("Path copied to clipboard");
+                                  }}
+                                >
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  Copy Path
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
@@ -1052,6 +1278,235 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* File Preview Modal */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  previewFile?.fileType === "image" ? "bg-green-100 dark:bg-green-900/20" :
+                  previewFile?.fileType === "video" ? "bg-purple-100 dark:bg-purple-900/20" :
+                  previewFile?.fileType === "pdf" ? "bg-red-100 dark:bg-red-900/20" :
+                  "bg-gray-100 dark:bg-gray-800"
+                }`}>
+                  {previewFile && (
+                    <previewFile.icon className={`w-5 h-5 ${
+                      previewFile.fileType === "image" ? "text-green-600" :
+                      previewFile.fileType === "video" ? "text-purple-600" :
+                      previewFile.fileType === "pdf" ? "text-red-600" :
+                      "text-gray-600"
+                    }`} />
+                  )}
+                </div>
+                <div>
+                  <DialogTitle className="text-xl font-mono">{previewFile?.name}</DialogTitle>
+                  <DialogDescription className="font-mono">
+                    {previewFile?.size} • {previewFile?.fileType}
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => previewFile && handleFileDownload(previewFile)}
+                  className="font-mono"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => previewFile && handleFileDownload(previewFile, true)}
+                  className="font-mono"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto">
+            {previewFile && (
+              <div className="space-y-4">
+                {previewFile.fileType === "image" && (
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <Image
+                        src={getFilePreviewUrl(previewFile)}
+                        alt={previewFile.name}
+                        width={800}
+                        height={600}
+                        className="max-w-full max-h-[60vh] object-contain rounded-lg border"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const errorDiv = e.currentTarget.parentElement?.querySelector('.error-fallback');
+                          if (errorDiv) {
+                            errorDiv.classList.remove('hidden');
+                          }
+                        }}
+                        onLoad={(e) => {
+                          const errorDiv = e.currentTarget.parentElement?.querySelector('.error-fallback');
+                          if (errorDiv) {
+                            errorDiv.classList.add('hidden');
+                          }
+                        }}
+                      />
+                      <div className="error-fallback hidden text-center py-12">
+                        <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground font-mono mb-4">Unable to preview this image</p>
+                        <div className="flex justify-center gap-3">
+                          <Button
+                            onClick={() => handleFileDownload(previewFile)}
+                            variant="outline"
+                            size="sm"
+                            className="font-mono"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download Instead
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {previewFile.fileType === "video" && (
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <video
+                        controls
+                        className="max-w-full max-h-[60vh] rounded-lg border"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const errorDiv = e.currentTarget.parentElement?.querySelector('.error-fallback');
+                          if (errorDiv) {
+                            errorDiv.classList.remove('hidden');
+                          }
+                        }}
+                        onLoadedData={(e) => {
+                          const errorDiv = e.currentTarget.parentElement?.querySelector('.error-fallback');
+                          if (errorDiv) {
+                            errorDiv.classList.add('hidden');
+                          }
+                        }}
+                      >
+                        <source src={getFilePreviewUrl(previewFile)} />
+                        Your browser does not support the video tag.
+                      </video>
+                      <div className="error-fallback hidden text-center py-12">
+                        <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground font-mono mb-4">Unable to preview this video</p>
+                        <div className="flex justify-center gap-3">
+                          <Button
+                            onClick={() => handleFileDownload(previewFile)}
+                            variant="outline"
+                            size="sm"
+                            className="font-mono"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download Instead
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {previewFile.fileType === "audio" && (
+                  <div className="flex justify-center py-12">
+                    <div className="text-center space-y-4">
+                      <div className="w-20 h-20 mx-auto bg-pink-100 dark:bg-pink-900/20 rounded-full flex items-center justify-center">
+                        <Music className="w-10 h-10 text-pink-600" />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="font-medium font-mono">{previewFile.name}</p>
+                        <audio 
+                          controls 
+                          className="mx-auto"
+                          onError={() => {
+                            toast.error("Unable to play this audio file");
+                          }}
+                        >
+                          <source src={getFilePreviewUrl(previewFile)} />
+                          Your browser does not support the audio tag.
+                        </audio>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!["image", "video", "audio"].includes(previewFile.fileType || "") && (
+                  <div className="text-center py-12">
+                    <div className="w-20 h-20 mx-auto bg-muted rounded-full flex items-center justify-center mb-4">
+                      <previewFile.icon className="w-10 h-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2 font-mono">Preview not available</h3>
+                    <p className="text-muted-foreground mb-6 font-mono">
+                      This file type cannot be previewed in the browser.
+                    </p>
+                    <div className="flex justify-center gap-3">
+                      <Button
+                        onClick={() => handleFileDownload(previewFile)}
+                        className="font-mono"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download File
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleFileDownload(previewFile, true)}
+                        className="font-mono"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Open in New Tab
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* File metadata */}
+                <Card className="p-4 bg-muted/30">
+                  <h4 className="font-medium font-mono mb-3">File Details</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground font-mono">Size</p>
+                      <p className="font-mono">{previewFile.size}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-mono">Type</p>
+                      <p className="font-mono capitalize">{previewFile.fileType}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-mono">Modified</p>
+                      <p className="font-mono">{previewFile.lastModified || "Unknown"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-mono">Path</p>
+                      <p className="font-mono text-xs truncate">{previewFile.key}</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowPreview(false)}
+              className="font-mono"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
