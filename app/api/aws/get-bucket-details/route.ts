@@ -1,5 +1,6 @@
 import { getUserS3Client } from "@/lib/aws/s3";
 import { NextRequest, NextResponse } from "next/server";
+import * as AWS from "aws-sdk";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -16,23 +17,49 @@ export async function GET(req: NextRequest) {
   try {
     const s3 = await getUserS3Client(userId);
 
-    const { Buckets = [] } = await s3.listBuckets().promise();
-    const bucket = Buckets.find((b) => b.Name === bucketName);
+    // First, try to check if bucket exists and is accessible
+    try {
+      await s3.headBucket({ Bucket: bucketName }).promise();
+    } catch (headBucketError: unknown) {
+      console.error("Bucket access error:", headBucketError);
+      const awsError = headBucketError as AWS.AWSError;
+      if (awsError.statusCode === 404) {
+        return NextResponse.json(
+          { message: "Bucket not found or not accessible" },
+          { status: 404 }
+        );
+      }
+      if (awsError.statusCode === 403) {
+        return NextResponse.json(
+          { message: "Access denied to bucket. Check AWS role permissions." },
+          { status: 403 }
+        );
+      }
+      throw headBucketError;
+    }
 
-    if (!bucket) {
-      return NextResponse.json(
-        { message: "Bucket not found" },
-        { status: 404 }
+    let region = "us-east-1";
+    try {
+      const { LocationConstraint } = await s3
+        .getBucketLocation({ Bucket: bucketName })
+        .promise();
+      region = LocationConstraint || "us-east-1";
+    } catch (locationError: unknown) {
+      console.error(
+        "Warning: Could not get bucket location, using default region:",
+        locationError
       );
     }
 
-    const { LocationConstraint: region } = await s3
-      .getBucketLocation({ Bucket: bucketName })
-      .promise();
-    if (!region) {
-      return NextResponse.json(
-        { message: "Bucket location not found" },
-        { status: 404 }
+    let creationDate: Date | null = null;
+    try {
+      const { Buckets = [] } = await s3.listBuckets().promise();
+      const bucket = Buckets.find((b) => b.Name === bucketName);
+      creationDate = bucket?.CreationDate || null;
+    } catch (listError: unknown) {
+      console.error(
+        "Warning: Could not list buckets to get creation date:",
+        listError
       );
     }
     const contents: AWS.S3.ObjectList = [];
@@ -59,9 +86,9 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      name: bucket.Name,
-      creationDate: bucket.CreationDate,
-      region: region || "us-east-1",
+      name: bucketName,
+      creationDate: creationDate,
+      region: region,
       totalFiles: totalCount,
       totalSizeBytes: totalSize,
       files: contents.map((obj) => ({
