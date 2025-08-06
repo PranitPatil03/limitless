@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,15 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth-client";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, HelpCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { AWSSetupGuide } from "./aws-setup-guide";
+import { TrustPolicyReminder } from "./trust-policy-reminder";
 
 const awsRegions = [
   { value: "us-east-1", label: "US East (N. Virginia)" },
@@ -54,6 +56,8 @@ export default function SettingsPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [showTrustPolicyReminder, setShowTrustPolicyReminder] = useState(false);
 
   const [customRegion, setCustomRegion] = useState("");
   const isOtherRegion = defaultRegion === "other";
@@ -79,6 +83,9 @@ export default function SettingsPage() {
       setMessage("✅ AWS Role ARN saved successfully.");
       setUserRoleARN("");
       fetchUserRoles();
+      
+      // Show trust policy reminder for first-time users or when adding new roles
+      setShowTrustPolicyReminder(true);
     } catch (err) {
       setMessage("❌ Error: " + err);
     } finally {
@@ -86,7 +93,7 @@ export default function SettingsPage() {
     }
   };
 
-  const fetchUserRoles = async () => {
+  const fetchUserRoles = useCallback(async () => {
     if (!user?.id) return;
 
     setFetchingRoles(true);
@@ -100,7 +107,7 @@ export default function SettingsPage() {
     } finally {
       setFetchingRoles(false);
     }
-  };
+  }, [user?.id]);
 
   const handleDeleteRole = (roleArn: string) => {
     setRoleToDelete(roleArn);
@@ -132,7 +139,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchUserRoles();
-  }, [user?.id]);
+  }, [user?.id, fetchUserRoles]);
 
   return (
     <div className="w-full py-10 font-mono px-6">
@@ -211,8 +218,26 @@ export default function SettingsPage() {
           <div className="space-y-8">
             <div className="flex flex-col lg:flex-row gap-8 items-start">
               <Card className="p-6 space-y-4 flex-1">
-                <div className="text-lg font-bold font-mono mb-2">
-                  AWS Credentials
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-lg font-bold font-mono">
+                    AWS Credentials
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-mono"
+                    onClick={() => setShowSetupGuide(true)}
+                  >
+                    <HelpCircle className="w-4 h-4 mr-2" />
+                    Setup Guide
+                  </Button>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
+                    <strong>Need help?</strong> Click the &quot;Setup Guide&quot; button above for detailed instructions 
+                    on creating an IAM role and configuring the trust policy.
+                  </p>
                 </div>
 
                 <div>
@@ -319,6 +344,22 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* AWS Setup Guide Modal */}
+      <AWSSetupGuide
+        isOpen={showSetupGuide}
+        onClose={() => setShowSetupGuide(false)}
+      />
+
+      {/* Trust Policy Reminder Modal */}
+      <TrustPolicyReminder
+        isOpen={showTrustPolicyReminder}
+        onClose={() => setShowTrustPolicyReminder(false)}
+        onOpenFullGuide={() => {
+          setShowTrustPolicyReminder(false);
+          setShowSetupGuide(true);
+        }}
+      />
     </div>
   );
 }
