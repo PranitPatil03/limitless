@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, Upload, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface BucketHeaderProps {
@@ -7,6 +7,7 @@ interface BucketHeaderProps {
   breadcrumbs: string[];
   onNavigateToPath: (path: string) => void;
   onUploadClick: () => void;
+  onDeleteBucket: () => void;
 }
 
 export function BucketHeader({
@@ -14,6 +15,7 @@ export function BucketHeader({
   breadcrumbs,
   onNavigateToPath,
   onUploadClick,
+  onDeleteBucket,
 }: BucketHeaderProps) {
   return (
     <div className="flex flex-col gap-2 mb-6">
@@ -53,10 +55,21 @@ export function BucketHeader({
             </div>
           ))}
         </div>
-        <Button size="sm" className="h-10 px-4 font-mono" onClick={onUploadClick}>
-          <Upload className="w-4 h-4 mr-2" />
-          Upload
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" className="h-10 px-4 font-mono" onClick={onUploadClick}>
+            <Upload className="w-4 h-4 mr-2" />
+            Upload
+          </Button>
+          <Button 
+            size="sm" 
+            variant="destructive" 
+            className="h-10 px-4 font-mono" 
+            onClick={onDeleteBucket}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Bucket
+          </Button>
+        </div>
       </div>
     </div>
   );

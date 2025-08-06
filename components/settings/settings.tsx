@@ -172,12 +172,12 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold font-mono">Settings</h1>
           <TabsList className="bg-muted rounded-lg p-1 flex gap-2">
-            <TabsTrigger
+            {/* <TabsTrigger
               value="profile"
               className="font-mono px-4 py-2 rounded-md"
             >
               Profile
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger
               value="config"
               className="font-mono px-4 py-2 rounded-md"

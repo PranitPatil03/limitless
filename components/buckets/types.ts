@@ -29,6 +29,24 @@ export interface BucketDetailProps {
   userId: string;
 }
 
+export interface DeleteFileResponse {
+  message: string;
+  deletedKey: string;
+}
+
+export interface DeleteFolderResponse {
+  message: string;
+  deletedFolder: string;
+  objectsDeleted: number;
+  deletedObjects: string[];
+}
+
+export interface DeleteBucketResponse {
+  message: string;
+  deletedBucket: string;
+  objectsDeleted?: boolean;
+}
+
 export type SortOption = "name" | "size" | "modified" | "type";
 export type SortDirection = "asc" | "desc";
 export type FilterOption =

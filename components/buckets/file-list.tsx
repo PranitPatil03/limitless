@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   ExternalLink,
   FileText,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { S3Item } from "./types";
@@ -24,6 +25,7 @@ interface FileListProps {
   onItemClick: (item: S3Item) => void;
   onFilePreview: (file: S3Item) => void;
   onFileDownload: (file: S3Item, openInNewTab?: boolean) => void;
+  onDeleteItem: (item: S3Item) => void;
 }
 
 export function FileList({
@@ -32,6 +34,7 @@ export function FileList({
   onItemClick,
   onFilePreview,
   onFileDownload,
+  onDeleteItem,
 }: FileListProps) {
   return (
     <Card className="p-0">
@@ -177,6 +180,14 @@ export function FileList({
                         >
                           <FileText className="w-4 h-4 mr-2" />
                           Copy Path
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => onDeleteItem(item)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete {item.type === "folder" ? "Folder" : "File"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

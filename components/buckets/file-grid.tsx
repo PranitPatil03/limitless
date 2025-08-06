@@ -1,4 +1,6 @@
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 import { S3Item } from "./types";
 
 interface FileGridProps {
@@ -7,6 +9,7 @@ interface FileGridProps {
   selectedItems: string[];
   onItemClick: (item: S3Item) => void;
   onItemSelect: (key: string) => void;
+  onDeleteItem: (item: S3Item) => void;
 }
 
 export function FileGrid({
@@ -15,6 +18,7 @@ export function FileGrid({
   selectedItems,
   onItemClick,
   onItemSelect,
+  onDeleteItem,
 }: FileGridProps) {
   return (
     <div className="space-y-8">
@@ -25,7 +29,7 @@ export function FileGrid({
             {folders.map((folder) => (
               <Card
                 key={folder.key}
-                className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
+                className={`group relative p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
                   selectedItems.includes(folder.key)
                     ? "ring-2 ring-primary"
                     : ""
@@ -49,6 +53,19 @@ export function FileGrid({
                     </p>
                   </div>
                 </div>
+                
+                {/* Delete button overlay */}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteItem(folder);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </Card>
             ))}
           </div>
@@ -62,7 +79,7 @@ export function FileGrid({
             {files.map((file) => (
               <Card
                 key={file.key}
-                className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
+                className={`group relative p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-105 ${
                   selectedItems.includes(file.key)
                     ? "ring-2 ring-primary"
                     : ""
@@ -108,6 +125,19 @@ export function FileGrid({
                     </div>
                   </div>
                 </div>
+                
+                {/* Delete button overlay */}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteItem(file);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </Card>
             ))}
           </div>

@@ -21,6 +21,7 @@ import { FileGrid } from "./file-grid";
 import { FileList } from "./file-list";
 import { FilePreviewModal } from "./file-preview-modal";
 import { UploadModal } from "./upload-modal";
+import { DeleteConfirmationModal } from "./delete-confirmation-modal";
 import { EmptyState, LoadingState, LoadingMoreState, ErrorState } from "./bucket-states";
 
 export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
@@ -48,6 +49,12 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
   const [folderName, setFolderName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<S3Item | null>(null);
+  const [deleteType, setDeleteType] = useState<"file" | "folder" | "bucket">("file");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const breadcrumbs = currentPath.split("/").filter(Boolean);
   
@@ -356,6 +363,95 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
     }
   };
 
+  // Delete functions
+  const handleDeleteClick = (item: S3Item) => {
+    setDeleteItem(item);
+    setDeleteType(item.type === "folder" ? "folder" : "file");
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteBucket = () => {
+    setDeleteItem(null);
+    setDeleteType("bucket");
+    setShowDeleteModal(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteItem(null);
+    setIsDeleting(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteItem && deleteType !== "bucket") return;
+
+    setIsDeleting(true);
+    try {
+      let response;
+      
+      if (deleteType === "bucket") {
+        response = await fetch('/api/aws/delete-bucket', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            bucketName: bucketId,
+            force: true, // Force delete non-empty buckets
+          }),
+        });
+      } else if (deleteType === "folder" && deleteItem) {
+        response = await fetch('/api/aws/delete-folder', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            bucketName: bucketId,
+            folderPath: currentPath + deleteItem.name + "/",
+          }),
+        });
+      } else if (deleteType === "file" && deleteItem) {
+        response = await fetch('/api/aws/delete-file', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            bucketName: bucketId,
+            fileKey: currentPath + deleteItem.name,
+          }),
+        });
+      }
+
+      if (response && response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        
+        if (deleteType === "bucket") {
+          // Redirect to buckets page after successful bucket deletion
+          window.location.href = "/buckets";
+        } else {
+          // Refresh bucket contents
+          await fetchBucketContents();
+        }
+        
+        handleCloseDeleteModal();
+      } else {
+        const errorData = response ? await response.json() : { error: "Unknown error" };
+        toast.error(errorData.error || `Failed to delete ${deleteType}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting ${deleteType}:`, error);
+      toast.error(`Failed to delete ${deleteType}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Show error state only on initial load failure
   if (error && initialLoad) {
     return <ErrorState error={error} onRetry={() => fetchBucketContents()} />;
@@ -368,6 +464,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
         breadcrumbs={breadcrumbs}
         onNavigateToPath={navigateToPath}
         onUploadClick={handleUploadClick}
+        onDeleteBucket={handleDeleteBucket}
       />
 
       <BucketControls
@@ -403,6 +500,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
               selectedItems={selectedItems}
               onItemClick={handleItemClick}
               onItemSelect={handleItemSelect}
+              onDeleteItem={handleDeleteClick}
             />
           ) : (
             <FileList
@@ -411,6 +509,7 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
               onItemClick={handleItemClick}
               onFilePreview={handleFilePreview}
               onFileDownload={handleFileDownload}
+              onDeleteItem={handleDeleteClick}
             />
           )}
 
@@ -458,6 +557,17 @@ export default function BucketDetail({ bucketId, userId }: BucketDetailProps) {
         loadingContent={loadingContent}
         onDownload={handleFileDownload}
         getFilePreviewUrl={getFilePreviewUrl}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={handleCloseDeleteModal}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
+        item={deleteItem}
+        deleteType={deleteType}
+        bucketName={bucketId}
       />
     </div>
   );

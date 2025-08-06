@@ -92,16 +92,7 @@ export function AppSidebar() {
         {/* Storage Usage */}
         <div className="mt-auto pt-6 border-t border-sidebar-border">
           <div className="p-3 bg-gradient-card rounded-lg shadow-soft">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-sidebar-foreground">
-                Storage
-              </span>
-              <span className="text-xs text-sidebar-foreground/70">
-                2.1GB / 5GB
-              </span>
-            </div>
-            <Progress value={42} className="h-2 mb-1" />
-            <p className="text-xs text-sidebar-foreground/60">42% used</p>
+
           </div>
         </div>
 
