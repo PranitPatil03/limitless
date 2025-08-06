@@ -16,7 +16,7 @@ export async function getUserS3Client(
     }
 
     if (!user.userroleaws || user.userroleaws.length === 0) {
-      throw new Error(`No AWS role configuration found for user ${userId}`);
+      throw new Error(`User with ID ${userId} has no AWS credentials`);
     }
 
     const roleArn = user.userroleaws[0].awsRoleARN;
